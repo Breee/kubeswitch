@@ -140,7 +140,7 @@ func getNamespacesInContextsCluster(k8sContext string) ([]corev1.Namespace, erro
 		case *url.Error:
 			return []corev1.Namespace{}, fmt.Errorf("unreachable")
 		case *apierrors.StatusError:
-			return []corev1.Namespace{}, fmt.Errorf("error from api: " + err.Error())
+			return []corev1.Namespace{}, fmt.Errorf("error from api: %w", err)
 		default:
 			return []corev1.Namespace{}, fmt.Errorf("error")
 		}
@@ -258,7 +258,7 @@ func mapKeysToSortedArray(m map[string]*clientcmdapi.Context) []string {
 
 func printUsage() {
 	usageText := `usage:
-	
+
 ./kubeswitch                          select context/namespace graphically
 ./kubeswitch <namespace>              switch to namespace in current context quickly
 ./kubeswitch <context> <namespace>    switch to namespace in context quickly
