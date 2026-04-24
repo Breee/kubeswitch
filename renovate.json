@@ -1,6 +1,38 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
-  ]
+    "config:base",
+    ":dependencyDashboard",
+    "mergeConfidence:all-badges",
+    ":semanticCommits",
+    ":disableRateLimiting",
+    ":separateMajorReleases",
+    ":separatePatchReleases",
+    ":automergeRequireAllStatusChecks",
+    ":automergeAll",
+    ":automergePr",
+    ":ignoreModulesAndTests"
+  ],
+  "configMigration": true,
+  "timezone": "Europe/Berlin",
+  "useBaseBranchConfig": "merge",
+  "platformAutomerge": true,
+  "rebaseWhen": "automerging",
+  "major":  { "labels": ["renovate::major",  "type::renovate"] },
+  "minor":  { "labels": ["renovate::minor",  "type::renovate"] },
+  "patch":  { "labels": ["renovate::patch",  "type::renovate"] },
+  "pin":    { "labels": ["renovate::pin",    "type::renovate"] },
+  "digest": { "labels": ["renovate::digest", "type::renovate"] },
+  "packageRules": [
+    {
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["indirect"],
+      "enabled": true
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "automerge": true
+    }
+  ],
+  "postUpdateOptions": ["gomodTidy"]
 }
