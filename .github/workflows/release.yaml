@@ -31,7 +31,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24.13"
+          go-version: "1.26.2"
 
       - run: make test
 
@@ -44,7 +44,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24.13"
+          go-version: "1.26.2"
 
       - name: Install kind
         run: |
@@ -69,7 +69,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24.13"
+          go-version: "1.26.2"
 
       - name: Check for relevant changes since last tag
         id: changes
