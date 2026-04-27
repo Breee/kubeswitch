@@ -51,11 +51,17 @@ Press `/` to activate the search filter. It matches context and namespace names 
 
 ## Shell Completions
 
-Bash completions provide tab-completion for contexts and namespaces, plus a `ks` alias.
+Tab-completion for contexts and namespaces, plus a `ks` alias. Supports bash, zsh, and fish.
 
 ```bash
-# Add to your ~/.bashrc or ~/.bash_profile:
-source <(kubeswitch completions)
+# Bash — add to ~/.bashrc:
+source <(kubeswitch completion bash)
+
+# Zsh — add to ~/.zshrc:
+source <(kubeswitch completion zsh)
+
+# Fish — add to ~/.config/fish/config.fish:
+kubeswitch completion fish | source
 ```
 
 This gives you:

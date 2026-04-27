@@ -40,6 +40,12 @@ var (
 //go:embed completions/kubeswitch.bash
 var bashCompletions string
 
+//go:embed completions/kubeswitch.zsh
+var zshCompletions string
+
+//go:embed completions/kubeswitch.fish
+var fishCompletions string
+
 // Tree data structures
 
 type contextNode struct {
@@ -417,8 +423,7 @@ func main() {
 		case "-h", "--help":
 			printUsage()
 		case "completions", "completion":
-			fmt.Print(bashCompletions)
-			os.Exit(0)
+			printCompletions()
 		}
 	}
 
@@ -632,8 +637,29 @@ func printUsage() {
 ./kubeswitch                          select context/namespace graphically
 ./kubeswitch <namespace>              switch to namespace in current context quickly
 ./kubeswitch <context> <namespace>    switch to namespace in context quickly
-./kubeswitch <context>/<namespace>    switch to namespace in context quickly`
+./kubeswitch <context>/<namespace>    switch to namespace in context quickly
+./kubeswitch completion bash|zsh|fish  print shell completions`
 
 	fmt.Println(usageText)
 	os.Exit(2)
+}
+
+func printCompletions() {
+	shell := "bash"
+	if len(os.Args) > 2 {
+		shell = os.Args[2]
+	}
+
+	switch shell {
+	case "bash":
+		fmt.Print(bashCompletions)
+	case "zsh":
+		fmt.Print(zshCompletions)
+	case "fish":
+		fmt.Print(fishCompletions)
+	default:
+		fmt.Fprintf(os.Stderr, "unsupported shell: %s (supported: bash, zsh, fish)\n", shell)
+		os.Exit(1)
+	}
+	os.Exit(0)
 }
