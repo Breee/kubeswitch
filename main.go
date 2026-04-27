@@ -66,6 +66,7 @@ type model struct {
 	offset        int // scroll offset
 	filter        string
 	filtering     bool
+	fuzzy         bool
 }
 
 func (m model) Init() tea.Cmd {
@@ -89,6 +90,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.filtering = false
 				// Fall through to normal key handling below
 				return m.handleNavKey(msg.String())
+			case "tab":
+				m.fuzzy = !m.fuzzy
+				m.cursor = 0
+				m.offset = 0
 			case "backspace":
 				if len(m.filter) > 0 {
 					m.filter = m.filter[:len(m.filter)-1]
@@ -116,6 +121,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "/":
 				m.filtering = true
+			case "tab":
+				m.fuzzy = !m.fuzzy
+				m.cursor = 0
+				m.offset = 0
 			default:
 				return m.handleNavKey(msg.String())
 			}
@@ -200,13 +209,19 @@ func (m model) visibleCount() int {
 	return count
 }
 
-func (m model) fuzzyMatch(text string) bool {
+func (m model) matchesFilter(text string) bool {
 	if m.filter == "" {
 		return true
 	}
 	lower := strings.ToLower(text)
 	pattern := strings.ToLower(m.filter)
 
+	// Strict mode: substring only
+	if !m.fuzzy {
+		return strings.Contains(lower, pattern)
+	}
+
+	// Fuzzy mode:
 	// 1. Exact substring — strongest signal
 	if strings.Contains(lower, pattern) {
 		return true
@@ -280,11 +295,11 @@ func (m model) contextMatchesFilter(c contextNode) bool {
 	if m.filter == "" {
 		return true
 	}
-	if m.fuzzyMatch(c.name) {
+	if m.matchesFilter(c.name) {
 		return true
 	}
 	for _, ns := range c.namespaces {
-		if m.fuzzyMatch(ns) {
+		if m.matchesFilter(ns) {
 			return true
 		}
 	}
@@ -300,7 +315,7 @@ func (m model) filteredVisibleCount() int {
 		count++
 		if c.expanded {
 			for _, ns := range c.namespaces {
-				if m.filter == "" || m.fuzzyMatch(c.name) || m.fuzzyMatch(ns) {
+				if m.filter == "" || m.matchesFilter(c.name) || m.matchesFilter(ns) {
 					count++
 				}
 			}
@@ -321,7 +336,7 @@ func (m model) filteredItemAtCursor() (contextName, namespace string) {
 		idx++
 		if c.expanded {
 			for _, ns := range c.namespaces {
-				if m.filter == "" || m.fuzzyMatch(c.name) || m.fuzzyMatch(ns) {
+				if m.filter == "" || m.matchesFilter(c.name) || m.matchesFilter(ns) {
 					if idx == m.cursor {
 						return c.name, ns
 					}
@@ -339,6 +354,8 @@ var (
 	styleTurquoise = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	styleCursor    = lipgloss.NewStyle().Bold(true).Reverse(true)
 	styleFilter    = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
+	styleKey       = lipgloss.NewStyle().Bold(true)
+	styleDim       = lipgloss.NewStyle().Faint(true)
 )
 
 func (m model) View() string {
@@ -378,7 +395,7 @@ func (m model) View() string {
 
 		if c.expanded {
 			for _, ns := range c.namespaces {
-				if m.filter != "" && !m.fuzzyMatch(c.name) && !m.fuzzyMatch(ns) {
+				if m.filter != "" && !m.matchesFilter(c.name) && !m.matchesFilter(ns) {
 					continue
 				}
 				nsLine := "    " + ns
@@ -403,13 +420,22 @@ func (m model) View() string {
 		lines = lines[m.offset:end]
 	}
 
+	modeLabel := "fuzzy"
+	if !m.fuzzy {
+		modeLabel = "exact"
+	}
+
+	help := func(key, desc string) string {
+		return styleKey.Render(key) + styleDim.Render(" "+desc)
+	}
+
 	var footer string
 	if m.filtering {
-		footer = styleFilter.Render("/"+m.filter) + "▎"
+		footer = styleFilter.Render("/"+m.filter) + "▎  " + help("tab", "toggle search mode (current: "+modeLabel+")") + "  " + help("esc", "clear")
 	} else if m.filter != "" {
-		footer = styleFilter.Render("/"+m.filter) + " (esc to clear)"
+		footer = styleFilter.Render("/"+m.filter) + "  " + styleDim.Render("("+modeLabel+")") + "  " + help("tab", "toggle search mode") + "  " + help("esc", "clear")
 	} else {
-		footer = "↑/↓ navigate • enter select • / filter • q quit"
+		footer = help("↑↓", "navigate") + "  " + help("enter", "select") + "  " + help("/", "search") + "  " + help("q", "quit")
 	}
 
 	return strings.Join(lines, "\n") + "\n\n" + footer + "\n"
@@ -487,6 +513,7 @@ func main() {
 		cursor:        initialCursor,
 		activeContext: mergedConfig.CurrentContext,
 		activeNs:      activeNs,
+		fuzzy:         true,
 	}
 
 	p := tea.NewProgram(m)
