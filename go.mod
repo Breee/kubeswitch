@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/gdamore/tcell/v2 v2.13.9
-	github.com/rivo/tview v0.0.0-20241227133733-17b7edb88c57
+	github.com/rivo/tview v0.42.0
 	k8s.io/api v0.36.0
 	k8s.io/apimachinery v0.36.0
 	k8s.io/client-go v0.36.0
