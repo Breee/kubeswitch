@@ -17,6 +17,7 @@
   "useBaseBranchConfig": "merge",
   "platformAutomerge": true,
   "rebaseWhen": "automerging",
+  "dependencyDashboard" : true,
   "major":  { "labels": ["renovate::major",  "type::renovate"], "automerge": false },
   "minor":  { "labels": ["renovate::minor",  "type::renovate"], "automerge": true },
   "patch":  { "labels": ["renovate::patch",  "type::renovate"], "automerge": true },
