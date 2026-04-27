@@ -18,6 +18,10 @@ kubeswitch talks to the kubernetes API and does not depend on kubectl.
 
 Available for Linux and MacOS: [Latest Release](https://github.com/Breee/kubeswitch/releases/latest)
 
+```bash
+curl -sL https://github.com/Breee/kubeswitch/releases/latest/download/kubeswitch_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/').tar.gz | sudo tar xz -C /usr/local/bin kubeswitch
+```
+
 ## Config
 
 Read from the default location `~/.kube/config`. If not present, the location is read from environment variable `KUBECONFIG` (remember to `export`). That env variable can contain multiple locations separated by `:` from where configs are merged together.
