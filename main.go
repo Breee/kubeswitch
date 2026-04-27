@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -11,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -36,12 +37,419 @@ var (
 	mergedConfig     *clientcmdapi.Config
 )
 
+//go:embed completions/kubeswitch.bash
+var bashCompletions string
+
+//go:embed completions/kubeswitch.zsh
+var zshCompletions string
+
+//go:embed completions/kubeswitch.fish
+var fishCompletions string
+
+// Tree data structures
+
+type contextNode struct {
+	name       string
+	namespaces []string
+	err        error
+	expanded   bool
+	isActive   bool
+}
+
+type model struct {
+	contexts      []contextNode
+	cursor        int // flat index into visible items
+	selected      *contextNamespaceTuple
+	activeContext string
+	activeNs      string
+	height        int // terminal height
+	offset        int // scroll offset
+	filter        string
+	filtering     bool
+	fuzzy         bool
+}
+
+func (m model) Init() tea.Cmd {
+	return nil
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.height = msg.Height
+		return m, nil
+	case tea.KeyMsg:
+		if m.filtering {
+			switch msg.String() {
+			case "esc":
+				m.filtering = false
+				m.filter = ""
+				m.cursor = 0
+				m.offset = 0
+			case "enter", "up", "down":
+				m.filtering = false
+				// Fall through to normal key handling below
+				return m.handleNavKey(msg.String())
+			case "tab":
+				m.fuzzy = !m.fuzzy
+				m.cursor = 0
+				m.offset = 0
+			case "backspace":
+				if len(m.filter) > 0 {
+					m.filter = m.filter[:len(m.filter)-1]
+					m.cursor = 0
+					m.offset = 0
+				}
+			case "ctrl+c":
+				return m, tea.Quit
+			default:
+				if len(msg.String()) == 1 {
+					m.filter += msg.String()
+					m.cursor = 0
+					m.offset = 0
+				}
+			}
+		} else {
+			switch msg.String() {
+			case "q", "ctrl+c", "esc":
+				if m.filter != "" {
+					m.filter = ""
+					m.cursor = 0
+					m.offset = 0
+				} else {
+					return m, tea.Quit
+				}
+			case "/":
+				m.filtering = true
+			case "tab":
+				m.fuzzy = !m.fuzzy
+				m.cursor = 0
+				m.offset = 0
+			default:
+				return m.handleNavKey(msg.String())
+			}
+		}
+	}
+
+	// Keep cursor in view
+	viewHeight := m.viewportHeight()
+	if viewHeight > 0 {
+		if m.cursor < m.offset {
+			m.offset = m.cursor
+		}
+		if m.cursor >= m.offset+viewHeight {
+			m.offset = m.cursor - viewHeight + 1
+		}
+	}
+
+	return m, nil
+}
+
+func (m model) handleNavKey(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		if m.cursor < m.filteredVisibleCount()-1 {
+			m.cursor++
+		}
+	case "enter", " ":
+		ctx, ns := m.filteredItemAtCursor()
+		if ns == "" {
+			for i := range m.contexts {
+				if m.contexts[i].name == ctx {
+					if m.contexts[i].err != nil {
+						break
+					}
+					wasExpanded := m.contexts[i].expanded
+					for j := range m.contexts {
+						m.contexts[j].expanded = false
+					}
+					m.contexts[i].expanded = !wasExpanded
+					break
+				}
+			}
+		} else {
+			m.selected = &contextNamespaceTuple{ctx, ns}
+			return m, tea.Quit
+		}
+	}
+
+	// Keep cursor in view
+	viewHeight := m.viewportHeight()
+	if viewHeight > 0 {
+		if m.cursor < m.offset {
+			m.offset = m.cursor
+		}
+		if m.cursor >= m.offset+viewHeight {
+			m.offset = m.cursor - viewHeight + 1
+		}
+	}
+
+	return m, nil
+}
+
+func (m model) viewportHeight() int {
+	if m.height <= 2 {
+		return 0
+	}
+	return m.height - 2 // reserve lines for help text
+}
+
+func (m model) visibleCount() int {
+	count := 0
+	for _, c := range m.contexts {
+		count++ // context row
+		if c.expanded {
+			count += len(c.namespaces)
+		}
+	}
+	return count
+}
+
+func (m model) matchesFilter(text string) bool {
+	if m.filter == "" {
+		return true
+	}
+	lower := strings.ToLower(text)
+	pattern := strings.ToLower(m.filter)
+
+	// Strict mode: substring only
+	if !m.fuzzy {
+		return strings.Contains(lower, pattern)
+	}
+
+	// Fuzzy mode:
+	// 1. Exact substring — strongest signal
+	if strings.Contains(lower, pattern) {
+		return true
+	}
+
+	// 2. Subsequence match — handles abbreviations (e.g. "prd" matches "production")
+	pi := 0
+	for i := 0; i < len(lower) && pi < len(pattern); i++ {
+		if lower[i] == pattern[pi] {
+			pi++
+		}
+	}
+	if pi == len(pattern) {
+		return true
+	}
+
+	// 3. Edit distance — handles typos (Elasticsearch AUTO tiers)
+	threshold := 0
+	switch {
+	case len(pattern) <= 2:
+		threshold = 0
+	case len(pattern) <= 5:
+		threshold = 1
+	default:
+		threshold = 2
+	}
+	if threshold == 0 {
+		return false
+	}
+	if len(pattern) > len(lower) {
+		return levenshtein(lower, pattern) <= threshold
+	}
+	for i := 0; i <= len(lower)-len(pattern); i++ {
+		if levenshtein(lower[i:i+len(pattern)], pattern) <= threshold {
+			return true
+		}
+	}
+	return false
+}
+
+func levenshtein(a, b string) int {
+	if len(a) == 0 {
+		return len(b)
+	}
+	if len(b) == 0 {
+		return len(a)
+	}
+
+	prev := make([]int, len(b)+1)
+	curr := make([]int, len(b)+1)
+
+	for j := range prev {
+		prev[j] = j
+	}
+
+	for i := 1; i <= len(a); i++ {
+		curr[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			curr[j] = min(curr[j-1]+1, min(prev[j]+1, prev[j-1]+cost))
+		}
+		prev, curr = curr, prev
+	}
+	return prev[len(b)]
+}
+
+func (m model) contextMatchesFilter(c contextNode) bool {
+	if m.filter == "" {
+		return true
+	}
+	if m.matchesFilter(c.name) {
+		return true
+	}
+	for _, ns := range c.namespaces {
+		if m.matchesFilter(ns) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m model) filteredVisibleCount() int {
+	count := 0
+	for _, c := range m.contexts {
+		if !m.contextMatchesFilter(c) {
+			continue
+		}
+		count++
+		if c.expanded {
+			for _, ns := range c.namespaces {
+				if m.filter == "" || m.matchesFilter(c.name) || m.matchesFilter(ns) {
+					count++
+				}
+			}
+		}
+	}
+	return count
+}
+
+func (m model) filteredItemAtCursor() (contextName, namespace string) {
+	idx := 0
+	for _, c := range m.contexts {
+		if !m.contextMatchesFilter(c) {
+			continue
+		}
+		if idx == m.cursor {
+			return c.name, ""
+		}
+		idx++
+		if c.expanded {
+			for _, ns := range c.namespaces {
+				if m.filter == "" || m.matchesFilter(c.name) || m.matchesFilter(ns) {
+					if idx == m.cursor {
+						return c.name, ns
+					}
+					idx++
+				}
+			}
+		}
+	}
+	return "", ""
+}
+
+var (
+	styleGreen     = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	styleRed       = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	styleTurquoise = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	styleCursor    = lipgloss.NewStyle().Bold(true).Reverse(true)
+	styleFilter    = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
+	styleKey       = lipgloss.NewStyle().Bold(true)
+	styleDim       = lipgloss.NewStyle().Faint(true)
+)
+
+func (m model) View() string {
+	var lines []string
+
+	idx := 0
+	for _, c := range m.contexts {
+		if !m.contextMatchesFilter(c) {
+			continue
+		}
+
+		prefix := "▸ "
+		if c.expanded {
+			prefix = "▾ "
+		}
+
+		label := c.name
+		var style lipgloss.Style
+		if c.err != nil {
+			label = c.name + " (" + c.err.Error() + ")"
+			style = styleRed
+		} else if c.isActive {
+			label = c.name + " (active)"
+			style = styleGreen
+		} else {
+			style = styleTurquoise
+		}
+
+		line := prefix + label
+		if idx == m.cursor {
+			line = styleCursor.Render(line)
+		} else {
+			line = style.Render(line)
+		}
+		lines = append(lines, line)
+		idx++
+
+		if c.expanded {
+			for _, ns := range c.namespaces {
+				if m.filter != "" && !m.matchesFilter(c.name) && !m.matchesFilter(ns) {
+					continue
+				}
+				nsLine := "    " + ns
+				if idx == m.cursor {
+					nsLine = styleCursor.Render(nsLine)
+				} else if c.isActive && ns == m.activeNs {
+					nsLine = styleGreen.Render(nsLine)
+				}
+				lines = append(lines, nsLine)
+				idx++
+			}
+		}
+	}
+
+	// Apply viewport clipping
+	viewHeight := m.viewportHeight()
+	if viewHeight > 0 && len(lines) > viewHeight {
+		end := m.offset + viewHeight
+		if end > len(lines) {
+			end = len(lines)
+		}
+		lines = lines[m.offset:end]
+	}
+
+	modeLabel := "fuzzy"
+	if !m.fuzzy {
+		modeLabel = "exact"
+	}
+
+	help := func(key, desc string) string {
+		return styleKey.Render(key) + styleDim.Render(" "+desc)
+	}
+
+	var footer string
+	if m.filtering {
+		footer = styleFilter.Render("/"+m.filter) + "▎  " + help("tab", "toggle search mode (current: "+modeLabel+")") + "  " + help("esc", "clear")
+	} else if m.filter != "" {
+		footer = styleFilter.Render("/"+m.filter) + "  " + styleDim.Render("("+modeLabel+")") + "  " + help("tab", "toggle search mode") + "  " + help("esc", "clear")
+	} else {
+		footer = help("↑↓", "navigate") + "  " + help("enter", "select") + "  " + help("/", "search") + "  " + help("q", "quit")
+	}
+
+	return strings.Join(lines, "\n") + "\n\n" + footer + "\n"
+}
+
 func main() {
 	var err error
 
 	if len(os.Args) > 1 {
-		if os.Args[1] == "-h" || os.Args[1] == "--help" {
+		switch os.Args[1] {
+		case "-h", "--help":
 			printUsage()
+		case "completions", "completion":
+			printCompletions()
 		}
 	}
 
@@ -60,63 +468,62 @@ func main() {
 		quickSwitch()
 	}
 
-	app := tview.NewApplication()
-
-	nodeRoot := tview.NewTreeNode("Contexts").SetSelectable(false)
-
-	expandedNode := new(tview.TreeNode)
-	highlightNode := nodeRoot
+	// Build tree data
+	var contexts []contextNode
+	initialCursor := 0
+	flatIdx := 0
 
 	for _, thisContextName := range mapKeysToSortedArray(mergedConfig.Contexts) {
-		nodeContextName := tview.NewTreeNode(" " + thisContextName)
+		node := contextNode{name: thisContextName}
 
 		namespacesInThisContextsCluster, err := getNamespacesInContextsCluster(thisContextName)
 		if err != nil {
-			nodeContextName.SetColor(tcell.ColorRed).SetText(" " + thisContextName + " (" + err.Error() + ")").SetSelectable(false)
-		} else if thisContextName == mergedConfig.CurrentContext {
-			nodeContextName.SetColor(tcell.ColorGreen).SetText(" " + thisContextName + " (active)")
+			node.err = err
 		} else {
-			nodeContextName.SetColor(tcell.ColorTurquoise)
+			for _, ns := range namespacesInThisContextsCluster {
+				node.namespaces = append(node.namespaces, ns.Name)
+			}
 		}
 
-		nodeContextName.Collapse()
-		nodeContextName.SetSelectedFunc(func() {
-			nodeContextName.SetExpanded(!nodeContextName.IsExpanded())
+		if thisContextName == mergedConfig.CurrentContext {
+			node.isActive = true
+			node.expanded = true
+		}
 
-			if nodeContextName.IsExpanded() && expandedNode != nodeContextName {
-				expandedNode.Collapse()
-				expandedNode = nodeContextName
-			}
-		})
+		contexts = append(contexts, node)
 
-		nodeRoot.AddChild(nodeContextName)
-
-		for _, thisNamespace := range namespacesInThisContextsCluster {
-			nodeNamespace := tview.NewTreeNode(" " + thisNamespace.Name).SetReference(contextNamespaceTuple{thisContextName, thisNamespace.Name})
-
-			if thisContextName == mergedConfig.CurrentContext {
-				nodeContextName.Expand()
-				expandedNode = nodeContextName
-
-				if thisNamespace.Name == mergedConfig.Contexts[thisContextName].Namespace {
-					nodeNamespace.SetColor(tcell.ColorGreen)
-					highlightNode = nodeNamespace
+		flatIdx++ // context row
+		if node.expanded {
+			for _, ns := range node.namespaces {
+				if node.isActive && ns == mergedConfig.Contexts[thisContextName].Namespace {
+					initialCursor = flatIdx
 				}
+				flatIdx++
 			}
-
-			nodeNamespace.SetSelectedFunc(func() {
-				app.Stop()
-				switchContext(nodeNamespace.GetReference().(contextNamespaceTuple))
-			})
-			nodeContextName.AddChild(nodeNamespace)
 		}
-
 	}
 
-	tree := tview.NewTreeView().SetRoot(nodeRoot).SetCurrentNode(highlightNode)
+	activeNs := ""
+	if ctx, ok := mergedConfig.Contexts[mergedConfig.CurrentContext]; ok && ctx != nil {
+		activeNs = ctx.Namespace
+	}
 
-	if err := app.SetRoot(tree, true).Run(); err != nil {
+	m := model{
+		contexts:      contexts,
+		cursor:        initialCursor,
+		activeContext: mergedConfig.CurrentContext,
+		activeNs:      activeNs,
+		fuzzy:         true,
+	}
+
+	p := tea.NewProgram(m)
+	finalModel, err := p.Run()
+	if err != nil {
 		log.Fatalln(err)
+	}
+
+	if result := finalModel.(model).selected; result != nil {
+		switchContext(*result)
 	}
 }
 
@@ -262,8 +669,29 @@ func printUsage() {
 ./kubeswitch                          select context/namespace graphically
 ./kubeswitch <namespace>              switch to namespace in current context quickly
 ./kubeswitch <context> <namespace>    switch to namespace in context quickly
-./kubeswitch <context>/<namespace>    switch to namespace in context quickly`
+./kubeswitch <context>/<namespace>    switch to namespace in context quickly
+./kubeswitch completion bash|zsh|fish  print shell completions`
 
 	fmt.Println(usageText)
 	os.Exit(2)
+}
+
+func printCompletions() {
+	shell := "bash"
+	if len(os.Args) > 2 {
+		shell = os.Args[2]
+	}
+
+	switch shell {
+	case "bash":
+		fmt.Print(bashCompletions)
+	case "zsh":
+		fmt.Print(zshCompletions)
+	case "fish":
+		fmt.Print(fishCompletions)
+	default:
+		fmt.Fprintf(os.Stderr, "unsupported shell: %s (supported: bash, zsh, fish)\n", shell)
+		os.Exit(1)
+	}
+	os.Exit(0)
 }

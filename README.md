@@ -31,13 +31,37 @@ Read from the default location `~/.kube/config`. If not present, the location is
 | `kubeswitch <context> <namespace>` | switch to context/namespace |
 | `kubeswitch <context> .` | switch to `default` namespace of context |
 
+## TUI Controls
+
+| Key | Action |
+|-|-|
+| `↑`/`↓` or `k`/`j` | Navigate |
+| `Enter` or `Space` | Expand/collapse context or select namespace |
+| `/` | Start fuzzy search |
+| `Esc` | Clear search filter or quit |
+| `q` | Quit |
+
+### Fuzzy Search
+
+Press `/` to activate the search filter. It matches context and namespace names using:
+
+1. **Substring** — `prod` matches `production`
+2. **Subsequence** — `prd` matches `production` (letters in order)
+3. **Edit distance** — `prodution` matches `production` (tolerates typos)
+
 ## Shell Completions
 
-Bash completions provide tab-completion for contexts and namespaces, plus a `ks` alias.
+Tab-completion for contexts and namespaces, plus a `ks` alias. Supports bash, zsh, and fish.
 
 ```bash
-# Add to your ~/.bashrc or ~/.bash_profile:
-source /path/to/completions/kubeswitch.bash
+# Bash — add to ~/.bashrc:
+source <(kubeswitch completion bash)
+
+# Zsh — add to ~/.zshrc:
+source <(kubeswitch completion zsh)
+
+# Fish — add to ~/.config/fish/config.fish:
+kubeswitch completion fish | source
 ```
 
 This gives you:
