@@ -1,4 +1,4 @@
-module github.com/danielb42/kubeswitch
+module github.com/Breee/kubeswitch
 
 go 1.26.0
 
