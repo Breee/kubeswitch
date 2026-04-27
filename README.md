@@ -55,7 +55,7 @@ Bash completions provide tab-completion for contexts and namespaces, plus a `ks`
 
 ```bash
 # Add to your ~/.bashrc or ~/.bash_profile:
-source /path/to/completions/kubeswitch.bash
+source <(kubeswitch completions)
 ```
 
 This gives you:

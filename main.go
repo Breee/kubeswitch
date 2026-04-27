@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -35,6 +36,9 @@ var (
 	kubeconfLocation = os.Getenv("HOME") + "/.kube/config"
 	mergedConfig     *clientcmdapi.Config
 )
+
+//go:embed completions/kubeswitch.bash
+var bashCompletions string
 
 // Tree data structures
 
@@ -409,8 +413,12 @@ func main() {
 	var err error
 
 	if len(os.Args) > 1 {
-		if os.Args[1] == "-h" || os.Args[1] == "--help" {
+		switch os.Args[1] {
+		case "-h", "--help":
 			printUsage()
+		case "completions", "completion":
+			fmt.Print(bashCompletions)
+			os.Exit(0)
 		}
 	}
 
