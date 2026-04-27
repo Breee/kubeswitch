@@ -9,7 +9,6 @@
     ":separateMajorReleases",
     ":separatePatchReleases",
     ":automergeRequireAllStatusChecks",
-    ":automergeAll",
     ":automergePr",
     ":ignoreModulesAndTests"
   ],
@@ -18,11 +17,11 @@
   "useBaseBranchConfig": "merge",
   "platformAutomerge": true,
   "rebaseWhen": "automerging",
-  "major":  { "labels": ["renovate::major",  "type::renovate"] },
-  "minor":  { "labels": ["renovate::minor",  "type::renovate"] },
-  "patch":  { "labels": ["renovate::patch",  "type::renovate"] },
-  "pin":    { "labels": ["renovate::pin",    "type::renovate"] },
-  "digest": { "labels": ["renovate::digest", "type::renovate"] },
+  "major":  { "labels": ["renovate::major",  "type::renovate"], "automerge": false },
+  "minor":  { "labels": ["renovate::minor",  "type::renovate"], "automerge": true },
+  "patch":  { "labels": ["renovate::patch",  "type::renovate"], "automerge": true },
+  "pin":    { "labels": ["renovate::pin",    "type::renovate"], "automerge": true },
+  "digest": { "labels": ["renovate::digest", "type::renovate"], "automerge": true },
   "packageRules": [
     {
       "matchManagers": ["gomod"],
