@@ -477,11 +477,16 @@ func main() {
 		}
 	}
 
+	activeNs := ""
+	if ctx, ok := mergedConfig.Contexts[mergedConfig.CurrentContext]; ok && ctx != nil {
+		activeNs = ctx.Namespace
+	}
+
 	m := model{
 		contexts:      contexts,
 		cursor:        initialCursor,
 		activeContext: mergedConfig.CurrentContext,
-		activeNs:      mergedConfig.Contexts[mergedConfig.CurrentContext].Namespace,
+		activeNs:      activeNs,
 	}
 
 	p := tea.NewProgram(m)
