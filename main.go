@@ -155,6 +155,29 @@ func (m model) handleNavKey(key string) (tea.Model, tea.Cmd) {
 		if m.cursor < m.filteredVisibleCount()-1 {
 			m.cursor++
 		}
+	case "pgup":
+		step := m.viewportHeight()
+		if step < 1 {
+			step = 10
+		}
+		m.cursor -= step
+		if m.cursor < 0 {
+			m.cursor = 0
+		}
+	case "pgdown":
+		step := m.viewportHeight()
+		if step < 1 {
+			step = 10
+		}
+		m.cursor += step
+		max := m.filteredVisibleCount() - 1
+		if m.cursor > max {
+			m.cursor = max
+		}
+	case "home":
+		m.cursor = 0
+	case "end":
+		m.cursor = m.filteredVisibleCount() - 1
 	case "enter", " ":
 		ctx, ns := m.filteredItemAtCursor()
 		if ns == "" {
