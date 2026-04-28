@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/url"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -32,11 +34,40 @@ type contextNamespaceTuple struct {
 	k8sNamespace string
 }
 
+// VersionInfo holds structured version metadata, similar to kubectl/helm.
+type VersionInfo struct {
+	Version  string `json:"version"`
+	GoVersion string `json:"goVersion"`
+	Platform  string `json:"platform"`
+}
+
 var (
 	version          = "dev"
 	kubeconfLocation = os.Getenv("HOME") + "/.kube/config"
 	mergedConfig     *clientcmdapi.Config
 )
+
+func getVersionInfo() VersionInfo {
+	return VersionInfo{
+		Version:   version,
+		GoVersion: runtime.Version(),
+		Platform:  runtime.GOOS + "/" + runtime.GOARCH,
+	}
+}
+
+func printVersion(outputFormat string) {
+	info := getVersionInfo()
+	if outputFormat == "json" {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(info); err != nil {
+			log.Fatalln(err)
+		}
+	} else {
+		fmt.Println(info.Version)
+	}
+	os.Exit(0)
+}
 
 //go:embed completions/kubeswitch.bash
 var bashCompletions string
@@ -473,8 +504,14 @@ func main() {
 		case "-h", "--help":
 			printUsage()
 		case "version", "-v", "--version":
-			fmt.Println(version)
-			os.Exit(0)
+			outputFormat := ""
+			for i := 2; i < len(os.Args)-1; i++ {
+				if os.Args[i] == "-o" || os.Args[i] == "--output" {
+					outputFormat = os.Args[i+1]
+					break
+				}
+			}
+			printVersion(outputFormat)
 		case "completions", "completion":
 			printCompletions()
 		}
@@ -698,7 +735,7 @@ func printUsage() {
 ./kubeswitch <context> <namespace>    switch to namespace in context quickly
 ./kubeswitch <context>/<namespace>    switch to namespace in context quickly
 ./kubeswitch completion bash|zsh|fish  print shell completions
-./kubeswitch version                   print version`
+./kubeswitch version [-o json]         print version`
 
 	fmt.Println(usageText)
 	os.Exit(2)

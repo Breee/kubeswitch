@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"runtime"
 	"testing"
 
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -9,6 +11,43 @@ import (
 func TestVersionDefault(t *testing.T) {
 	if version != "dev" {
 		t.Errorf("expected default version to be %q, got %q", "dev", version)
+	}
+}
+
+func TestGetVersionInfo(t *testing.T) {
+	info := getVersionInfo()
+	if info.Version != version {
+		t.Errorf("expected Version %q, got %q", version, info.Version)
+	}
+	if info.GoVersion != runtime.Version() {
+		t.Errorf("expected GoVersion %q, got %q", runtime.Version(), info.GoVersion)
+	}
+	expectedPlatform := runtime.GOOS + "/" + runtime.GOARCH
+	if info.Platform != expectedPlatform {
+		t.Errorf("expected Platform %q, got %q", expectedPlatform, info.Platform)
+	}
+}
+
+func TestVersionInfoJSON(t *testing.T) {
+	info := getVersionInfo()
+	data, err := json.Marshal(info)
+	if err != nil {
+		t.Fatalf("failed to marshal VersionInfo: %v", err)
+	}
+
+	var parsed VersionInfo
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal VersionInfo: %v", err)
+	}
+
+	if parsed.Version != info.Version {
+		t.Errorf("JSON round-trip: expected Version %q, got %q", info.Version, parsed.Version)
+	}
+	if parsed.GoVersion != info.GoVersion {
+		t.Errorf("JSON round-trip: expected GoVersion %q, got %q", info.GoVersion, parsed.GoVersion)
+	}
+	if parsed.Platform != info.Platform {
+		t.Errorf("JSON round-trip: expected Platform %q, got %q", info.Platform, parsed.Platform)
 	}
 }
 
