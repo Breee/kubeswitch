@@ -116,25 +116,25 @@ jobs:
       - name: Build linux/amd64
         if: steps.changes.outputs.skip != 'true'
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }}" -o kubeswitch
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }} -X main.gitCommit=$(git rev-parse --short HEAD) -X main.buildDate=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o kubeswitch
           tar czf kubeswitch_linux_amd64.tar.gz kubeswitch LICENSE README.md
 
       - name: Build linux/arm64
         if: steps.changes.outputs.skip != 'true'
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }}" -o kubeswitch
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }} -X main.gitCommit=$(git rev-parse --short HEAD) -X main.buildDate=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o kubeswitch
           tar czf kubeswitch_linux_arm64.tar.gz kubeswitch LICENSE README.md
 
       - name: Build darwin/amd64
         if: steps.changes.outputs.skip != 'true'
         run: |
-          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }}" -o kubeswitch
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }} -X main.gitCommit=$(git rev-parse --short HEAD) -X main.buildDate=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o kubeswitch
           tar czf kubeswitch_darwin_amd64.tar.gz kubeswitch LICENSE README.md
 
       - name: Build darwin/arm64
         if: steps.changes.outputs.skip != 'true'
         run: |
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }}" -o kubeswitch
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }} -X main.gitCommit=$(git rev-parse --short HEAD) -X main.buildDate=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o kubeswitch
           tar czf kubeswitch_darwin_arm64.tar.gz kubeswitch LICENSE README.md
 
       - name: Create release with auto-generated notes

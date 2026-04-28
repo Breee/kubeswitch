@@ -1,7 +1,9 @@
 BINARY   := kubeswitch
 GO       := go
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-GOFLAGS  := -ldflags="-s -w -X main.version=$(VERSION)"
+COMMIT   ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+DATE     ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+GOFLAGS  := -ldflags="-s -w -X main.version=$(VERSION) -X main.gitCommit=$(COMMIT) -X main.buildDate=$(DATE)"
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 
 .PHONY: all build test vet e2e clean install-completions dist

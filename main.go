@@ -34,15 +34,21 @@ type contextNamespaceTuple struct {
 	k8sNamespace string
 }
 
-// VersionInfo holds structured version metadata, similar to kubectl/helm.
+// VersionInfo holds structured version metadata, following CLI best practices
+// (similar to kubectl version -o json / helm version -o json).
 type VersionInfo struct {
-	Version  string `json:"version"`
+	Version   string `json:"version"`
+	GitCommit string `json:"gitCommit"`
+	BuildDate string `json:"buildDate"`
 	GoVersion string `json:"goVersion"`
+	Compiler  string `json:"compiler"`
 	Platform  string `json:"platform"`
 }
 
 var (
 	version          = "dev"
+	gitCommit        = "unknown"
+	buildDate        = "unknown"
 	kubeconfLocation = os.Getenv("HOME") + "/.kube/config"
 	mergedConfig     *clientcmdapi.Config
 )
@@ -50,7 +56,10 @@ var (
 func getVersionInfo() VersionInfo {
 	return VersionInfo{
 		Version:   version,
+		GitCommit: gitCommit,
+		BuildDate: buildDate,
 		GoVersion: runtime.Version(),
+		Compiler:  runtime.Compiler,
 		Platform:  runtime.GOOS + "/" + runtime.GOARCH,
 	}
 }

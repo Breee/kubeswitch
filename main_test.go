@@ -14,13 +14,34 @@ func TestVersionDefault(t *testing.T) {
 	}
 }
 
+func TestGitCommitDefault(t *testing.T) {
+	if gitCommit != "unknown" {
+		t.Errorf("expected default gitCommit to be %q, got %q", "unknown", gitCommit)
+	}
+}
+
+func TestBuildDateDefault(t *testing.T) {
+	if buildDate != "unknown" {
+		t.Errorf("expected default buildDate to be %q, got %q", "unknown", buildDate)
+	}
+}
+
 func TestGetVersionInfo(t *testing.T) {
 	info := getVersionInfo()
 	if info.Version != version {
 		t.Errorf("expected Version %q, got %q", version, info.Version)
 	}
+	if info.GitCommit != gitCommit {
+		t.Errorf("expected GitCommit %q, got %q", gitCommit, info.GitCommit)
+	}
+	if info.BuildDate != buildDate {
+		t.Errorf("expected BuildDate %q, got %q", buildDate, info.BuildDate)
+	}
 	if info.GoVersion != runtime.Version() {
 		t.Errorf("expected GoVersion %q, got %q", runtime.Version(), info.GoVersion)
+	}
+	if info.Compiler != runtime.Compiler {
+		t.Errorf("expected Compiler %q, got %q", runtime.Compiler, info.Compiler)
 	}
 	expectedPlatform := runtime.GOOS + "/" + runtime.GOARCH
 	if info.Platform != expectedPlatform {
@@ -43,8 +64,17 @@ func TestVersionInfoJSON(t *testing.T) {
 	if parsed.Version != info.Version {
 		t.Errorf("JSON round-trip: expected Version %q, got %q", info.Version, parsed.Version)
 	}
+	if parsed.GitCommit != info.GitCommit {
+		t.Errorf("JSON round-trip: expected GitCommit %q, got %q", info.GitCommit, parsed.GitCommit)
+	}
+	if parsed.BuildDate != info.BuildDate {
+		t.Errorf("JSON round-trip: expected BuildDate %q, got %q", info.BuildDate, parsed.BuildDate)
+	}
 	if parsed.GoVersion != info.GoVersion {
 		t.Errorf("JSON round-trip: expected GoVersion %q, got %q", info.GoVersion, parsed.GoVersion)
+	}
+	if parsed.Compiler != info.Compiler {
+		t.Errorf("JSON round-trip: expected Compiler %q, got %q", info.Compiler, parsed.Compiler)
 	}
 	if parsed.Platform != info.Platform {
 		t.Errorf("JSON round-trip: expected Platform %q, got %q", info.Platform, parsed.Platform)
