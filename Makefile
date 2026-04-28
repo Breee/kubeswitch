@@ -1,7 +1,7 @@
 BINARY   := kubeswitch
 GO       := go
 GOFLAGS  := -ldflags="-s -w"
-PLATFORMS := linux/amd64 darwin/amd64 darwin/arm64
+PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 
 .PHONY: all build test vet e2e clean install-completions dist
 
