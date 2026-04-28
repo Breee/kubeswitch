@@ -1,6 +1,7 @@
 BINARY   := kubeswitch
 GO       := go
-GOFLAGS  := -ldflags="-s -w"
+VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+GOFLAGS  := -ldflags="-s -w -X main.version=$(VERSION)"
 PLATFORMS := linux/amd64 darwin/amd64 darwin/arm64
 
 .PHONY: all build test vet e2e clean install-completions dist

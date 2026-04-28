@@ -6,6 +6,12 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
+func TestVersionDefault(t *testing.T) {
+	if version == "" {
+		t.Error("expected version to have a default value, got empty string")
+	}
+}
+
 func TestMapKeysToSortedArray_Multiple(t *testing.T) {
 	m := map[string]*clientcmdapi.Context{
 		"gamma": {},

@@ -33,6 +33,7 @@ type contextNamespaceTuple struct {
 }
 
 var (
+	version          = "dev"
 	kubeconfLocation = os.Getenv("HOME") + "/.kube/config"
 	mergedConfig     *clientcmdapi.Config
 )
@@ -471,6 +472,9 @@ func main() {
 		switch os.Args[1] {
 		case "-h", "--help":
 			printUsage()
+		case "version", "-v", "--version":
+			fmt.Println(version)
+			os.Exit(0)
 		case "completions", "completion":
 			printCompletions()
 		}
@@ -693,7 +697,8 @@ func printUsage() {
 ./kubeswitch <namespace>              switch to namespace in current context quickly
 ./kubeswitch <context> <namespace>    switch to namespace in context quickly
 ./kubeswitch <context>/<namespace>    switch to namespace in context quickly
-./kubeswitch completion bash|zsh|fish  print shell completions`
+./kubeswitch completion bash|zsh|fish  print shell completions
+./kubeswitch version                   print version`
 
 	fmt.Println(usageText)
 	os.Exit(2)
