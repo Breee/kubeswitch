@@ -7,8 +7,8 @@ import (
 )
 
 func TestVersionDefault(t *testing.T) {
-	if version == "" {
-		t.Error("expected version to have a default value, got empty string")
+	if version != "dev" {
+		t.Errorf("expected default version to be %q, got %q", "dev", version)
 	}
 }
 
