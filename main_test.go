@@ -157,3 +157,111 @@ func TestContextExists_EmptyConfig(t *testing.T) {
 		t.Error("expected contextExists(\"anything\") to be false on empty config")
 	}
 }
+
+func newTestModel() model {
+	return model{
+		contexts: []contextNode{
+			{name: "alpha", namespaces: []string{"ns1", "ns2"}, expanded: false},
+			{name: "beta", namespaces: []string{"ns3"}, expanded: true},
+		},
+		cursor: 0,
+		height: 20,
+	}
+}
+
+func TestHandleNavKey_RightExpandsCluster(t *testing.T) {
+	m := newTestModel()
+	// cursor on "alpha" (collapsed)
+	m.cursor = 0
+	result, _ := m.handleNavKey("right")
+	rm := result.(model)
+	if !rm.contexts[0].expanded {
+		t.Error("expected alpha to be expanded after right arrow")
+	}
+	// beta should be collapsed (only one expanded at a time)
+	if rm.contexts[1].expanded {
+		t.Error("expected beta to be collapsed after expanding alpha")
+	}
+}
+
+func TestHandleNavKey_LeftCollapsesCluster(t *testing.T) {
+	m := newTestModel()
+	// cursor on "beta" which is expanded; beta is at flat index 1 (alpha collapsed)
+	m.cursor = 1
+	result, _ := m.handleNavKey("left")
+	rm := result.(model)
+	if rm.contexts[1].expanded {
+		t.Error("expected beta to be collapsed after left arrow")
+	}
+}
+
+func TestHandleNavKey_LeftOnNamespaceJumpsToCluster(t *testing.T) {
+	m := newTestModel()
+	// beta is expanded with ns3; beta is at flat index 1, ns3 at flat index 2
+	m.cursor = 2
+	result, _ := m.handleNavKey("left")
+	rm := result.(model)
+	if rm.cursor != 1 {
+		t.Errorf("expected cursor to jump to beta (index 1), got %d", rm.cursor)
+	}
+}
+
+func TestHandleNavKey_RightOnNamespaceDoesNothing(t *testing.T) {
+	m := newTestModel()
+	// cursor on ns3 (flat index 2)
+	m.cursor = 2
+	result, _ := m.handleNavKey("right")
+	rm := result.(model)
+	if rm.cursor != 2 {
+		t.Errorf("expected cursor to stay at 2, got %d", rm.cursor)
+	}
+	if rm.contexts[1].expanded != true {
+		t.Error("expected beta to remain expanded")
+	}
+}
+
+func TestHandleNavKey_RightOnAlreadyExpandedDoesNothing(t *testing.T) {
+	m := newTestModel()
+	// cursor on "beta" which is already expanded (flat index 1)
+	m.cursor = 1
+	result, _ := m.handleNavKey("right")
+	rm := result.(model)
+	if !rm.contexts[1].expanded {
+		t.Error("expected beta to remain expanded")
+	}
+}
+
+func TestHandleNavKey_HAndLKeysWork(t *testing.T) {
+	m := newTestModel()
+	m.cursor = 0
+	result, _ := m.handleNavKey("l")
+	rm := result.(model)
+	if !rm.contexts[0].expanded {
+		t.Error("expected alpha to be expanded after 'l' key")
+	}
+
+	// Now collapse it with 'h'
+	rm.cursor = 0
+	result2, _ := rm.handleNavKey("h")
+	rm2 := result2.(model)
+	if rm2.contexts[0].expanded {
+		t.Error("expected alpha to be collapsed after 'h' key")
+	}
+}
+
+func TestFilteredContextIndex(t *testing.T) {
+	m := newTestModel()
+	// alpha is at index 0, beta is at index 1 (alpha not expanded)
+	if got := m.filteredContextIndex("alpha"); got != 0 {
+		t.Errorf("expected alpha at index 0, got %d", got)
+	}
+	if got := m.filteredContextIndex("beta"); got != 1 {
+		t.Errorf("expected beta at index 1, got %d", got)
+	}
+
+	// Expand alpha: alpha=0, ns1=1, ns2=2, beta=3
+	m.contexts[0].expanded = true
+	if got := m.filteredContextIndex("beta"); got != 3 {
+		t.Errorf("expected beta at index 3 when alpha expanded, got %d", got)
+	}
+}

@@ -42,7 +42,9 @@ Read from the default location `~/.kube/config`. If not present, the location is
 | Key | Action |
 |-|-|
 | `↑`/`↓` or `k`/`j` | Navigate |
-| `Enter` or `Space` | Expand/collapse context or select namespace |
+| `←` or `h` | Collapse context / jump to parent context from namespace |
+| `→` or `l` | Expand context |
+| `Enter` or `Space` | Toggle expand/collapse context or select namespace |
 | `/` | Start fuzzy search |
 | `Esc` | Clear search filter or quit |
 | `q` | Quit |

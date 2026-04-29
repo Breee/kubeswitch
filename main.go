@@ -219,6 +219,38 @@ func (m model) handleNavKey(key string) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 	case "end":
 		m.cursor = m.filteredVisibleCount() - 1
+	case "left", "h":
+		ctx, ns := m.filteredItemAtCursor()
+		if ns == "" {
+			// On a cluster: collapse it
+			for i := range m.contexts {
+				if m.contexts[i].name == ctx && m.contexts[i].expanded {
+					m.contexts[i].expanded = false
+					break
+				}
+			}
+		} else {
+			// On a namespace: jump to the parent cluster
+			m.cursor = m.filteredContextIndex(ctx)
+		}
+	case "right", "l":
+		ctx, ns := m.filteredItemAtCursor()
+		if ns == "" {
+			// On a cluster: expand it (collapse others first)
+			for i := range m.contexts {
+				if m.contexts[i].name == ctx {
+					if m.contexts[i].err != nil || m.contexts[i].expanded {
+						break
+					}
+					for j := range m.contexts {
+						m.contexts[j].expanded = false
+					}
+					m.contexts[i].expanded = true
+					break
+				}
+			}
+		}
+		// On a namespace: do nothing
 	case "enter", " ":
 		ctx, ns := m.filteredItemAtCursor()
 		if ns == "" {
@@ -412,6 +444,27 @@ func (m model) filteredItemAtCursor() (contextName, namespace string) {
 	return "", ""
 }
 
+func (m model) filteredContextIndex(name string) int {
+	idx := 0
+	for _, c := range m.contexts {
+		if !m.contextMatchesFilter(c) {
+			continue
+		}
+		if c.name == name {
+			return idx
+		}
+		idx++
+		if c.expanded {
+			for _, ns := range c.namespaces {
+				if m.filter == "" || m.matchesFilter(c.name) || m.matchesFilter(ns) {
+					idx++
+				}
+			}
+		}
+	}
+	return 0
+}
+
 var (
 	styleGreen     = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	styleRed       = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
@@ -499,7 +552,7 @@ func (m model) View() string {
 	} else if m.filter != "" {
 		footer = styleFilter.Render("/"+m.filter) + "  " + styleDim.Render("("+modeLabel+")") + "  " + help("tab", "toggle search mode") + "  " + help("esc", "clear")
 	} else {
-		footer = help("↑↓", "navigate") + "  " + help("enter", "select") + "  " + help("/", "search") + "  " + help("q", "quit")
+		footer = help("↑↓", "navigate") + "  " + help("←→", "collapse/expand") + "  " + help("enter", "select") + "  " + help("/", "search") + "  " + help("q", "quit")
 	}
 
 	return strings.Join(lines, "\n") + "\n\n" + footer + "\n"
