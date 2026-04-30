@@ -118,6 +118,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
+		m.adjustOffset()
 		return m, nil
 	case tea.KeyMsg:
 		if m.filtering {
@@ -173,15 +174,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Keep cursor in view
-	viewHeight := m.viewportHeight()
-	if viewHeight > 0 {
-		if m.cursor < m.offset {
-			m.offset = m.cursor
-		}
-		if m.cursor >= m.offset+viewHeight {
-			m.offset = m.cursor - viewHeight + 1
-		}
-	}
+	m.adjustOffset()
 
 	return m, nil
 }
@@ -274,24 +267,64 @@ func (m model) handleNavKey(key string) (tea.Model, tea.Cmd) {
 	}
 
 	// Keep cursor in view
-	viewHeight := m.viewportHeight()
-	if viewHeight > 0 {
-		if m.cursor < m.offset {
-			m.offset = m.cursor
-		}
-		if m.cursor >= m.offset+viewHeight {
-			m.offset = m.cursor - viewHeight + 1
-		}
-	}
+	m.adjustOffset()
 
 	return m, nil
 }
 
 func (m model) viewportHeight() int {
-	if m.height <= 2 {
+	if m.height <= 3 {
 		return 0
 	}
-	return m.height - 2 // reserve lines for help text
+	return m.height - 3 // reserve lines for leading blank + footer
+}
+
+// expandedClusterHeaderIdx returns the flat index of the expanded cluster header, or -1.
+func (m model) expandedClusterHeaderIdx() int {
+	idx := 0
+	for _, c := range m.contexts {
+		if !m.contextMatchesFilter(c) {
+			continue
+		}
+		if c.expanded {
+			return idx
+		}
+		idx++
+	}
+	return -1
+}
+
+// adjustOffset keeps the cursor visible, accounting for the pinned header row.
+func (m *model) adjustOffset() {
+	vh := m.viewportHeight()
+	if vh <= 0 {
+		return
+	}
+
+	// Scroll up
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+		return
+	}
+
+	// Scroll down — if offset would pass the expanded header, pin uses 1 row
+	headerIdx := m.expandedClusterHeaderIdx()
+	if headerIdx >= 0 {
+		if m.cursor >= m.offset+vh {
+			newOffset := m.cursor - vh + 1
+			if newOffset > headerIdx {
+				m.offset = m.cursor - (vh - 1) + 1
+			} else {
+				m.offset = newOffset
+			}
+		} else if m.offset > headerIdx && m.cursor >= m.offset+(vh-1) {
+			m.offset = m.cursor - (vh - 1) + 1
+		}
+	} else {
+		if m.cursor >= m.offset+vh {
+			m.offset = m.cursor - vh + 1
+		}
+	}
 }
 
 func (m model) visibleCount() int {
@@ -530,11 +563,26 @@ func (m model) View() string {
 	// Apply viewport clipping
 	viewHeight := m.viewportHeight()
 	if viewHeight > 0 && len(lines) > viewHeight {
-		end := m.offset + viewHeight
-		if end > len(lines) {
-			end = len(lines)
+		// Check if an expanded cluster header has scrolled off the top
+		headerIdx := m.expandedClusterHeaderIdx()
+		if headerIdx >= 0 && m.offset > headerIdx {
+			// Pin the header at the top
+			pinnedHeader := lines[headerIdx]
+			end := m.offset + viewHeight - 1
+			if end > len(lines) {
+				end = len(lines)
+			}
+			clipped := make([]string, 0, viewHeight)
+			clipped = append(clipped, pinnedHeader)
+			clipped = append(clipped, lines[m.offset:end]...)
+			lines = clipped
+		} else {
+			end := m.offset + viewHeight
+			if end > len(lines) {
+				end = len(lines)
+			}
+			lines = lines[m.offset:end]
 		}
-		lines = lines[m.offset:end]
 	}
 
 	modeLabel := "fuzzy"
@@ -555,7 +603,7 @@ func (m model) View() string {
 		footer = help("↑↓", "navigate") + "  " + help("←→", "collapse/expand") + "  " + help("enter", "select") + "  " + help("/", "search") + "  " + help("q", "quit")
 	}
 
-	return strings.Join(lines, "\n") + "\n\n" + footer + "\n"
+	return "\n" + strings.Join(lines, "\n") + "\n\n" + footer + "\n"
 }
 
 func main() {
