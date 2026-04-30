@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -28,6 +29,14 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 )
+
+var debugMode = os.Getenv("KUBESWITCH_DEBUG") != ""
+
+func debugLog(format string, args ...interface{}) {
+	if debugMode {
+		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
+	}
+}
 
 type contextNamespaceTuple struct {
 	k8sContext   string
@@ -643,39 +652,56 @@ func main() {
 	}
 
 	// Build tree data
-	var contexts []contextNode
+	totalStart := time.Now()
+	sortedContextNames := mapKeysToSortedArray(mergedConfig.Contexts)
+	contexts := make([]contextNode, len(sortedContextNames))
+
+	// Fetch namespaces for all contexts concurrently
+	fetchStart := time.Now()
+	var wg sync.WaitGroup
+	for i, thisContextName := range sortedContextNames {
+		contexts[i].name = thisContextName
+		if thisContextName == mergedConfig.CurrentContext {
+			contexts[i].isActive = true
+			contexts[i].expanded = true
+		}
+
+		wg.Add(1)
+		go func(idx int, ctxName string) {
+			defer wg.Done()
+			start := time.Now()
+			namespacesInThisContextsCluster, err := getNamespacesInContextsCluster(ctxName)
+			elapsed := time.Since(start)
+			debugLog("fetched namespaces for %q: %d namespaces in %s", ctxName, len(namespacesInThisContextsCluster), elapsed)
+			if err != nil {
+				contexts[idx].err = err
+			} else {
+				ns := make([]string, len(namespacesInThisContextsCluster))
+				for j, n := range namespacesInThisContextsCluster {
+					ns[j] = n.Name
+				}
+				contexts[idx].namespaces = ns
+			}
+		}(i, thisContextName)
+	}
+	wg.Wait()
+	debugLog("total namespace fetch (parallel): %s", time.Since(fetchStart))
+
+	// Compute initial cursor position
 	initialCursor := 0
 	flatIdx := 0
-
-	for _, thisContextName := range mapKeysToSortedArray(mergedConfig.Contexts) {
-		node := contextNode{name: thisContextName}
-
-		namespacesInThisContextsCluster, err := getNamespacesInContextsCluster(thisContextName)
-		if err != nil {
-			node.err = err
-		} else {
-			for _, ns := range namespacesInThisContextsCluster {
-				node.namespaces = append(node.namespaces, ns.Name)
-			}
-		}
-
-		if thisContextName == mergedConfig.CurrentContext {
-			node.isActive = true
-			node.expanded = true
-		}
-
-		contexts = append(contexts, node)
-
+	for _, node := range contexts {
 		flatIdx++ // context row
 		if node.expanded {
 			for _, ns := range node.namespaces {
-				if node.isActive && ns == mergedConfig.Contexts[thisContextName].Namespace {
+				if node.isActive && ns == mergedConfig.Contexts[node.name].Namespace {
 					initialCursor = flatIdx
 				}
 				flatIdx++
 			}
 		}
 	}
+	debugLog("total TUI setup: %s", time.Since(totalStart))
 
 	activeNs := ""
 	if ctx, ok := mergedConfig.Contexts[mergedConfig.CurrentContext]; ok && ctx != nil {
