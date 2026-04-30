@@ -99,6 +99,14 @@ Example output:
 [DEBUG] total TUI setup: 323ms
 ```
 
+### Skip Namespace Fetching
+
+For large environments (e.g. 1000+ clusters), the namespace fetching at startup may be slow even with parallel requests. Set `KUBESWITCH_SKIP_NAMESPACE_FETCH=1` to skip all API calls and show only contexts (namespaces will be fetched on-demand when expanding a context):
+
+```bash
+KUBESWITCH_SKIP_NAMESPACE_FETCH=1 kubeswitch
+```
+
 ## E2E Testing
 
 The end-to-end test creates two [kind](https://kind.sigs.k8s.io/) clusters and validates context/namespace switching. Requires `kind`, `kubectl`, and `go`.

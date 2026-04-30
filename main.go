@@ -31,6 +31,7 @@ import (
 )
 
 var debugMode = os.Getenv("KUBESWITCH_DEBUG") != ""
+var skipNamespaceFetch = os.Getenv("KUBESWITCH_SKIP_NAMESPACE_FETCH") != ""
 
 func debugLog(format string, args ...interface{}) {
 	if debugMode {
@@ -244,6 +245,19 @@ func (m model) handleNavKey(key string) (tea.Model, tea.Cmd) {
 					if m.contexts[i].err != nil || m.contexts[i].expanded {
 						break
 					}
+					// Fetch namespaces on-demand if not yet loaded
+					if m.contexts[i].namespaces == nil {
+						namespacesInCluster, err := getNamespacesInContextsCluster(ctx)
+						if err != nil {
+							m.contexts[i].err = err
+							break
+						}
+						ns := make([]string, len(namespacesInCluster))
+						for j, n := range namespacesInCluster {
+							ns[j] = n.Name
+						}
+						m.contexts[i].namespaces = ns
+					}
 					for j := range m.contexts {
 						m.contexts[j].expanded = false
 					}
@@ -262,6 +276,19 @@ func (m model) handleNavKey(key string) (tea.Model, tea.Cmd) {
 						break
 					}
 					wasExpanded := m.contexts[i].expanded
+					// Fetch namespaces on-demand if not yet loaded
+					if !wasExpanded && m.contexts[i].namespaces == nil {
+						namespacesInCluster, err := getNamespacesInContextsCluster(ctx)
+						if err != nil {
+							m.contexts[i].err = err
+							break
+						}
+						nsList := make([]string, len(namespacesInCluster))
+						for j, n := range namespacesInCluster {
+							nsList[j] = n.Name
+						}
+						m.contexts[i].namespaces = nsList
+					}
 					for j := range m.contexts {
 						m.contexts[j].expanded = false
 					}
@@ -656,7 +683,7 @@ func main() {
 	sortedContextNames := mapKeysToSortedArray(mergedConfig.Contexts)
 	contexts := make([]contextNode, len(sortedContextNames))
 
-	// Fetch namespaces for all contexts concurrently
+	// Fetch namespaces for all contexts concurrently (unless skipped)
 	fetchStart := time.Now()
 	var wg sync.WaitGroup
 	for i, thisContextName := range sortedContextNames {
@@ -666,26 +693,32 @@ func main() {
 			contexts[i].expanded = true
 		}
 
-		wg.Add(1)
-		go func(idx int, ctxName string) {
-			defer wg.Done()
-			start := time.Now()
-			namespacesInThisContextsCluster, err := getNamespacesInContextsCluster(ctxName)
-			elapsed := time.Since(start)
-			debugLog("fetched namespaces for %q: %d namespaces in %s", ctxName, len(namespacesInThisContextsCluster), elapsed)
-			if err != nil {
-				contexts[idx].err = err
-			} else {
-				ns := make([]string, len(namespacesInThisContextsCluster))
-				for j, n := range namespacesInThisContextsCluster {
-					ns[j] = n.Name
+		if !skipNamespaceFetch {
+			wg.Add(1)
+			go func(idx int, ctxName string) {
+				defer wg.Done()
+				start := time.Now()
+				namespacesInThisContextsCluster, err := getNamespacesInContextsCluster(ctxName)
+				elapsed := time.Since(start)
+				debugLog("fetched namespaces for %q: %d namespaces in %s", ctxName, len(namespacesInThisContextsCluster), elapsed)
+				if err != nil {
+					contexts[idx].err = err
+				} else {
+					ns := make([]string, len(namespacesInThisContextsCluster))
+					for j, n := range namespacesInThisContextsCluster {
+						ns[j] = n.Name
+					}
+					contexts[idx].namespaces = ns
 				}
-				contexts[idx].namespaces = ns
-			}
-		}(i, thisContextName)
+			}(i, thisContextName)
+		}
 	}
 	wg.Wait()
-	debugLog("total namespace fetch (parallel): %s", time.Since(fetchStart))
+	if skipNamespaceFetch {
+		debugLog("namespace fetch skipped (KUBESWITCH_SKIP_NAMESPACE_FETCH is set)")
+	} else {
+		debugLog("total namespace fetch (parallel): %s", time.Since(fetchStart))
+	}
 
 	// Compute initial cursor position
 	initialCursor := 0
