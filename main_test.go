@@ -285,7 +285,9 @@ func TestDebugLog_Enabled(t *testing.T) {
         w.Close()
 
         var buf bytes.Buffer
-        buf.ReadFrom(r)
+        if _, err := buf.ReadFrom(r); err != nil {
+                t.Fatalf("failed to read from pipe: %v", err)
+        }
         output := buf.String()
 
         if output != "[DEBUG] test hello 42\n" {
@@ -309,7 +311,9 @@ func TestDebugLog_Disabled(t *testing.T) {
         w.Close()
 
         var buf bytes.Buffer
-        buf.ReadFrom(r)
+        if _, err := buf.ReadFrom(r); err != nil {
+                t.Fatalf("failed to read from pipe: %v", err)
+        }
         output := buf.String()
 
         if output != "" {
