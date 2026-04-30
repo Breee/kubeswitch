@@ -35,7 +35,7 @@ Read from the default location `~/.kube/config`. If not present, the location is
 | `kubeswitch <context> <namespace>` | switch to context/namespace |
 | `kubeswitch <context> .` | switch to `default` namespace of context |
 | `kubeswitch version` | print version |
-| `kubeswitch version -o json` | print version as JSON (like kubectl/helm) |
+| `kubeswitch version -o json` | print version as JSON|
 
 ## TUI Controls
 
