@@ -105,6 +105,38 @@ type contextNode struct {
 	err        error
 	expanded   bool
 	isActive   bool
+	loading    bool
+}
+
+// Messages for async namespace loading
+type namespacesLoadedMsg struct {
+	contextName string
+	namespaces  []string
+	err         error
+}
+
+type spinnerTickMsg time.Time
+
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+func fetchNamespacesCmd(ctxName string) tea.Cmd {
+	return func() tea.Msg {
+		nsList, err := getNamespacesInContextsCluster(ctxName)
+		if err != nil {
+			return namespacesLoadedMsg{contextName: ctxName, err: err}
+		}
+		ns := make([]string, len(nsList))
+		for i, n := range nsList {
+			ns[i] = n.Name
+		}
+		return namespacesLoadedMsg{contextName: ctxName, namespaces: ns}
+	}
+}
+
+func spinnerTickCmd() tea.Cmd {
+	return tea.Tick(80*time.Millisecond, func(t time.Time) tea.Msg {
+		return spinnerTickMsg(t)
+	})
 }
 
 type model struct {
@@ -118,14 +150,51 @@ type model struct {
 	filter        string
 	filtering     bool
 	fuzzy         bool
+	spinnerIdx    int
 }
 
 func (m model) Init() tea.Cmd {
+	// If in lazy mode, fetch namespaces for the active context immediately
+	if skipNamespaceFetch {
+		for _, c := range m.contexts {
+			if c.isActive && c.loading {
+				return tea.Batch(fetchNamespacesCmd(c.name), spinnerTickCmd())
+			}
+		}
+	}
 	return nil
+}
+
+func (m model) hasLoading() bool {
+	for _, c := range m.contexts {
+		if c.loading {
+			return true
+		}
+	}
+	return false
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case namespacesLoadedMsg:
+		for i := range m.contexts {
+			if m.contexts[i].name == msg.contextName {
+				m.contexts[i].loading = false
+				if msg.err != nil {
+					m.contexts[i].err = msg.err
+				} else {
+					m.contexts[i].namespaces = msg.namespaces
+				}
+				break
+			}
+		}
+		return m, nil
+	case spinnerTickMsg:
+		m.spinnerIdx++
+		if m.hasLoading() {
+			return m, spinnerTickCmd()
+		}
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
 		m.adjustOffset()
@@ -242,21 +311,17 @@ func (m model) handleNavKey(key string) (tea.Model, tea.Cmd) {
 			// On a cluster: expand it (collapse others first)
 			for i := range m.contexts {
 				if m.contexts[i].name == ctx {
-					if m.contexts[i].err != nil || m.contexts[i].expanded {
+					if m.contexts[i].err != nil || m.contexts[i].expanded || m.contexts[i].loading {
 						break
 					}
 					// Fetch namespaces on-demand if not yet loaded
 					if m.contexts[i].namespaces == nil {
-						namespacesInCluster, err := getNamespacesInContextsCluster(ctx)
-						if err != nil {
-							m.contexts[i].err = err
-							break
+						m.contexts[i].loading = true
+						for j := range m.contexts {
+							m.contexts[j].expanded = false
 						}
-						ns := make([]string, len(namespacesInCluster))
-						for j, n := range namespacesInCluster {
-							ns[j] = n.Name
-						}
-						m.contexts[i].namespaces = ns
+						m.contexts[i].expanded = true
+						return m, tea.Batch(fetchNamespacesCmd(ctx), spinnerTickCmd())
 					}
 					for j := range m.contexts {
 						m.contexts[j].expanded = false
@@ -272,22 +337,18 @@ func (m model) handleNavKey(key string) (tea.Model, tea.Cmd) {
 		if ns == "" {
 			for i := range m.contexts {
 				if m.contexts[i].name == ctx {
-					if m.contexts[i].err != nil {
+					if m.contexts[i].err != nil || m.contexts[i].loading {
 						break
 					}
 					wasExpanded := m.contexts[i].expanded
 					// Fetch namespaces on-demand if not yet loaded
 					if !wasExpanded && m.contexts[i].namespaces == nil {
-						namespacesInCluster, err := getNamespacesInContextsCluster(ctx)
-						if err != nil {
-							m.contexts[i].err = err
-							break
+						m.contexts[i].loading = true
+						for j := range m.contexts {
+							m.contexts[j].expanded = false
 						}
-						nsList := make([]string, len(namespacesInCluster))
-						for j, n := range namespacesInCluster {
-							nsList[j] = n.Name
-						}
-						m.contexts[i].namespaces = nsList
+						m.contexts[i].expanded = true
+						return m, tea.Batch(fetchNamespacesCmd(ctx), spinnerTickCmd())
 					}
 					for j := range m.contexts {
 						m.contexts[j].expanded = false
@@ -368,7 +429,11 @@ func (m model) visibleCount() int {
 	for _, c := range m.contexts {
 		count++ // context row
 		if c.expanded {
-			count += len(c.namespaces)
+			if c.loading {
+				count++
+			} else {
+				count += len(c.namespaces)
+			}
 		}
 	}
 	return count
@@ -479,9 +544,13 @@ func (m model) filteredVisibleCount() int {
 		}
 		count++
 		if c.expanded {
-			for _, ns := range c.namespaces {
-				if m.filter == "" || m.matchesFilter(c.name) || m.matchesFilter(ns) {
-					count++
+			if c.loading {
+				count++ // loading row
+			} else {
+				for _, ns := range c.namespaces {
+					if m.filter == "" || m.matchesFilter(c.name) || m.matchesFilter(ns) {
+						count++
+					}
 				}
 			}
 		}
@@ -500,12 +569,16 @@ func (m model) filteredItemAtCursor() (contextName, namespace string) {
 		}
 		idx++
 		if c.expanded {
-			for _, ns := range c.namespaces {
-				if m.filter == "" || m.matchesFilter(c.name) || m.matchesFilter(ns) {
-					if idx == m.cursor {
-						return c.name, ns
+			if c.loading {
+				idx++ // loading row
+			} else {
+				for _, ns := range c.namespaces {
+					if m.filter == "" || m.matchesFilter(c.name) || m.matchesFilter(ns) {
+						if idx == m.cursor {
+							return c.name, ns
+						}
+						idx++
 					}
-					idx++
 				}
 			}
 		}
@@ -524,9 +597,13 @@ func (m model) filteredContextIndex(name string) int {
 		}
 		idx++
 		if c.expanded {
-			for _, ns := range c.namespaces {
-				if m.filter == "" || m.matchesFilter(c.name) || m.matchesFilter(ns) {
-					idx++
+			if c.loading {
+				idx++
+			} else {
+				for _, ns := range c.namespaces {
+					if m.filter == "" || m.matchesFilter(c.name) || m.matchesFilter(ns) {
+						idx++
+					}
 				}
 			}
 		}
@@ -580,18 +657,25 @@ func (m model) View() string {
 		idx++
 
 		if c.expanded {
-			for _, ns := range c.namespaces {
-				if m.filter != "" && !m.matchesFilter(c.name) && !m.matchesFilter(ns) {
-					continue
-				}
-				nsLine := "    " + ns
-				if idx == m.cursor {
-					nsLine = styleCursor.Render(nsLine)
-				} else if c.isActive && ns == m.activeNs {
-					nsLine = styleGreen.Render(nsLine)
-				}
-				lines = append(lines, nsLine)
+			if c.loading {
+				frame := spinnerFrames[m.spinnerIdx%len(spinnerFrames)]
+				loadingLine := "    " + styleDim.Render(frame+" loading namespaces...")
+				lines = append(lines, loadingLine)
 				idx++
+			} else {
+				for _, ns := range c.namespaces {
+					if m.filter != "" && !m.matchesFilter(c.name) && !m.matchesFilter(ns) {
+						continue
+					}
+					nsLine := "    " + ns
+					if idx == m.cursor {
+						nsLine = styleCursor.Render(nsLine)
+					} else if c.isActive && ns == m.activeNs {
+						nsLine = styleGreen.Render(nsLine)
+					}
+					lines = append(lines, nsLine)
+					idx++
+				}
 			}
 		}
 	}
@@ -691,6 +775,9 @@ func main() {
 		if thisContextName == mergedConfig.CurrentContext {
 			contexts[i].isActive = true
 			contexts[i].expanded = true
+			if skipNamespaceFetch {
+				contexts[i].loading = true
+			}
 		}
 
 		if !skipNamespaceFetch {
