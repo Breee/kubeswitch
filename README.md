@@ -77,6 +77,36 @@ This gives you:
 - Tab-completion for context names (first argument)
 - Tab-completion for namespaces within a context (second argument)
 
+## Performance
+
+Namespace fetching for all contexts is performed **concurrently**, so startup time scales with the slowest cluster rather than the sum of all clusters.
+
+### Debug / Profiling
+
+Set `KUBESWITCH_DEBUG=1` to print timing information for each operation to stderr:
+
+```bash
+KUBESWITCH_DEBUG=1 kubeswitch
+```
+
+Example output:
+
+```
+[DEBUG] fetched namespaces for "prod-eu": 12 namespaces in 320ms
+[DEBUG] fetched namespaces for "prod-us": 8 namespaces in 280ms
+[DEBUG] fetched namespaces for "staging": 5 namespaces in 150ms
+[DEBUG] total namespace fetch (parallel): 322ms
+[DEBUG] total TUI setup: 323ms
+```
+
+### Skip Namespace Fetching
+
+For large environments (e.g. 1000+ clusters), the namespace fetching at startup may be slow even with parallel requests. Set `KUBESWITCH_SKIP_NAMESPACE_FETCH=1` to skip all API calls and show only contexts (namespaces will be fetched on-demand when expanding a context):
+
+```bash
+KUBESWITCH_SKIP_NAMESPACE_FETCH=1 kubeswitch
+```
+
 ## E2E Testing
 
 The end-to-end test creates two [kind](https://kind.sigs.k8s.io/) clusters and validates context/namespace switching. Requires `kind`, `kubectl`, and `go`.
