@@ -404,6 +404,20 @@ func (m *model) adjustOffset() {
 		return
 	}
 
+	// Clamp cursor to valid range first
+	total := m.filteredVisibleCount()
+	if total == 0 {
+		m.cursor = 0
+		m.offset = 0
+		return
+	}
+	if m.cursor >= total {
+		m.cursor = total - 1
+	}
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+
 	// Scroll up
 	if m.cursor < m.offset {
 		m.offset = m.cursor
@@ -427,6 +441,18 @@ func (m *model) adjustOffset() {
 		if m.cursor >= m.offset+vh {
 			m.offset = m.cursor - vh + 1
 		}
+	}
+
+	// Final clamp: offset must never exceed the point where the last item is visible
+	maxOffset := total - vh
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if m.offset > maxOffset {
+		m.offset = maxOffset
+	}
+	if m.offset < 0 {
+		m.offset = 0
 	}
 }
 
@@ -689,25 +715,34 @@ func (m model) View() string {
 	// Apply viewport clipping
 	viewHeight := m.viewportHeight()
 	if viewHeight > 0 && len(lines) > viewHeight {
+		// Safety: clamp offset to valid range
+		offset := m.offset
+		if offset >= len(lines) {
+			offset = len(lines) - 1
+		}
+		if offset < 0 {
+			offset = 0
+		}
+
 		// Check if an expanded cluster header has scrolled off the top
 		headerIdx := m.expandedClusterHeaderIdx()
-		if headerIdx >= 0 && m.offset > headerIdx {
+		if headerIdx >= 0 && offset > headerIdx {
 			// Pin the header at the top
 			pinnedHeader := lines[headerIdx]
-			end := m.offset + viewHeight - 1
+			end := offset + viewHeight - 1
 			if end > len(lines) {
 				end = len(lines)
 			}
 			clipped := make([]string, 0, viewHeight)
 			clipped = append(clipped, pinnedHeader)
-			clipped = append(clipped, lines[m.offset:end]...)
+			clipped = append(clipped, lines[offset:end]...)
 			lines = clipped
 		} else {
-			end := m.offset + viewHeight
+			end := offset + viewHeight
 			if end > len(lines) {
 				end = len(lines)
 			}
-			lines = lines[m.offset:end]
+			lines = lines[offset:end]
 		}
 	}
 
