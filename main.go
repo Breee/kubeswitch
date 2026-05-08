@@ -321,12 +321,15 @@ func (m model) handleNavKey(key string) (tea.Model, tea.Cmd) {
 							m.contexts[j].expanded = false
 						}
 						m.contexts[i].expanded = true
+						m.cursor = m.filteredContextIndex(ctx)
+						m.adjustOffset()
 						return m, tea.Batch(fetchNamespacesCmd(ctx), spinnerTickCmd())
 					}
 					for j := range m.contexts {
 						m.contexts[j].expanded = false
 					}
 					m.contexts[i].expanded = true
+					m.cursor = m.filteredContextIndex(ctx)
 					break
 				}
 			}
@@ -348,12 +351,15 @@ func (m model) handleNavKey(key string) (tea.Model, tea.Cmd) {
 							m.contexts[j].expanded = false
 						}
 						m.contexts[i].expanded = true
+						m.cursor = m.filteredContextIndex(ctx)
+						m.adjustOffset()
 						return m, tea.Batch(fetchNamespacesCmd(ctx), spinnerTickCmd())
 					}
 					for j := range m.contexts {
 						m.contexts[j].expanded = false
 					}
 					m.contexts[i].expanded = !wasExpanded
+					m.cursor = m.filteredContextIndex(ctx)
 					break
 				}
 			}
