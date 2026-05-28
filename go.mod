@@ -3,7 +3,7 @@ module github.com/Breee/kubeswitch
 go 1.26.0
 
 require (
-	github.com/charmbracelet/bubbletea v1.3.10
+	github.com/charmbracelet/bubbletea/v2 v2.0.6
 	github.com/charmbracelet/lipgloss v1.1.0
 	k8s.io/api v0.36.1
 	k8s.io/apimachinery v0.36.1
