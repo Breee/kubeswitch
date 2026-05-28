@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 
 	corev1 "k8s.io/api/core/v1"
@@ -653,7 +653,7 @@ var (
 	styleDim       = lipgloss.NewStyle().Faint(true)
 )
 
-func (m model) View() string {
+func (m model) View() tea.View {
 	var lines []string
 
 	idx := 0
@@ -764,7 +764,7 @@ func (m model) View() string {
 		footer = help("↑↓", "navigate") + "  " + help("←→", "collapse/expand") + "  " + help("enter", "select") + "  " + help("/", "search") + "  " + help("q", "quit")
 	}
 
-	return "\n" + strings.Join(lines, "\n") + "\n\n" + footer + "\n"
+	return tea.NewView("\n" + strings.Join(lines, "\n") + "\n\n" + footer + "\n")
 }
 
 func main() {
