@@ -1,6 +1,6 @@
 module github.com/Breee/kubeswitch
 
-go 1.26.0
+go 1.27
 
 require (
 	github.com/charmbracelet/bubbletea v1.3.10
@@ -71,5 +71,6 @@ require (
 	sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
+	sigs.k8s.io/structured-merge-diff/v7 v7.0.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
